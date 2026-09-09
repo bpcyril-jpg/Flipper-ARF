@@ -4,6 +4,8 @@
 #include <lib/subghz/blocks/encoder.h>
 #include <lib/subghz/blocks/generic.h>
 #include <lib/subghz/blocks/math.h>
+// [PROTOPIRATE_PORT] custom_btn support
+#include <lib/subghz/blocks/custom_btn_i.h>
 #include <string.h>
 
 #define TAG "FiatProtocolV1"
@@ -27,7 +29,7 @@
 #define FIAT_V1_XOR_FIELD         "XOR"
 #define FIAT_V1_HITAG2_KEY_FIELD  "Hitag2 Key"
 #define FIAT_V1_HITAG2_EPOCH_FIELD "Hitag2 Epoch"
-#define FIAT_V1_KNOWN_KEY_COUNT   8U
+// [HITAG2_BF] FIAT_V1_KNOWN_KEY_COUNT is now defined in fiat_v1.h (public API)
 
 #define FIAT_V1_ENC_LEAD_US        2033U
 #define FIAT_V1_ENC_GAP_US         3252U
@@ -264,6 +266,14 @@ static void fiat_v1_decode_fields(SubGhzProtocolDecoderFiatV1* instance) {
     instance->decoder.decode_data = instance->generic.data;
     instance->decoder.decode_count_bit = instance->generic.data_count_bit;
     fiat_v1_verify_hitag2_key(instance);
+
+    // [PROTOPIRATE_PORT] custom_btn support
+    // Fiat V1 mapping: Up=0x8 (Unlock), OK=0x0, Down=0xD → 3 custom buttons.
+    // Note: btn is a raw 4-bit code, not restricted to {1,2,4,8} in custom_btn mode.
+    if(subghz_custom_btn_get_original() == 0) {
+        subghz_custom_btn_set_original(instance->generic.btn);
+    }
+    subghz_custom_btn_set_max(3);
 }
 
 static bool fiat_v1_commit(
@@ -673,14 +683,56 @@ SubGhzProtocolStatus
     flipper_format_read_uint32(flipper_format, "Btn", &button, 1);
     flipper_format_rewind(flipper_format);
     flipper_format_read_uint32(flipper_format, "Cnt", &control, 1);
-    if(serial == 0U || serial == UINT32_MAX || !fiat_v1_button_valid((uint8_t)button)) {
+
+    // [PROTOPIRATE_PORT] custom_btn support
+    // Fiat V1 mapping (4-bit codes, may be outside the {1,2,4,8} valid set):
+    //   OK (default) → replay original captured button (do NOT rewrite to 0x0
+    //                  or the hitag2 authenticator will produce a different
+    //                  hop and the receiver will reject the frame)
+    //   Up           → 0x8 (Unlock)
+    //   Down         → 0xD (special code)
+    //   Left/Right   → unsupported, keep original
+    {
+        const uint8_t original_btn = (uint8_t)(button & 0x0FU);
+        if(subghz_custom_btn_get_original() == 0) {
+            subghz_custom_btn_set_original(original_btn);
+        }
+        subghz_custom_btn_set_max(3);
+        uint8_t custom_btn_id = subghz_custom_btn_get();
+        switch(custom_btn_id) {
+        case SUBGHZ_CUSTOM_BTN_UP:
+            button = 0x8U;
+            break;
+        case SUBGHZ_CUSTOM_BTN_DOWN:
+            button = 0xDU;
+            break;
+        case SUBGHZ_CUSTOM_BTN_OK:
+        default:
+            // [BUGFIX] OK is the default state after loading a .sub; the old
+            // code overwrote the button with 0x0 unconditionally, which broke
+            // the hitag2 authenticator (receiver rejected the frame). Replay
+            // the captured button instead.
+            button = original_btn;
+            break;
+        }
+    }
+
+    /* Skip strict validity check when the (possibly custom) button is any 4-bit code.
+     * Only reject if serial is missing/invalid. */
+    if(serial == 0U || serial == UINT32_MAX) {
         return SubGhzProtocolStatusErrorParserOthers;
     }
 
+    // [BUGFIX] Hitag2 Key is now OPTIONAL: if not present in the .sub (which
+    // happens when the capture was serialized before hitag2_key_valid was set,
+    // or when the file was hand-edited), try to auto-discover the key by
+    // iterating the 8 known keys against the captured (uid, btn, cnt, hop).
+    // This mirrors what fiat_v1_verify_hitag2_key() does at RX time.
+    bool key_loaded = false;
     flipper_format_rewind(flipper_format);
-    if(!flipper_format_read_hex(
+    if(flipper_format_read_hex(
            flipper_format, FIAT_V1_HITAG2_KEY_FIELD, instance->hitag2_key, 6U)) {
-        return SubGhzProtocolStatusErrorParserOthers;
+        key_loaded = true;
     }
 
     uint32_t epoch = 0U;
@@ -689,6 +741,44 @@ SubGhzProtocolStatus
         instance->epoch = epoch & 0x3FFFFUL;
     } else {
         instance->epoch = 0U;
+    }
+
+    if(!key_loaded) {
+        // Reconstruct captured hop+btn from the Raw field (or from generic if Raw missing)
+        uint32_t captured_hop = 0U;
+        uint8_t captured_btn = 0U;
+        uint16_t captured_cnt = (uint16_t)(control & 0x03FFU);
+        if(fiat_v1_frame_valid(raw_from_file)) {
+            captured_hop = fiat_v1_hop(raw_from_file);
+            captured_btn = raw_from_file[6] >> 4U;
+        } else {
+            // Fallback: derive from generic.data (upper 32 bits = serial, lower = hop)
+            captured_hop = (uint32_t)(instance->generic.data & 0xFFFFFFFFULL);
+            captured_btn = (uint8_t)(button & 0x0FU);
+        }
+
+        bool found = false;
+        for(uint8_t i = 0U; i < FIAT_V1_KNOWN_KEY_COUNT; i++) {
+            if(fiat_v1_key_matches(
+                   serial,
+                   captured_btn,
+                   captured_cnt,
+                   captured_hop,
+                   fiat_v1_known_keys[i],
+                   instance->epoch)) {
+                memcpy(instance->hitag2_key, fiat_v1_known_keys[i], 6U);
+                found = true;
+                FURI_LOG_I(TAG, "TX: auto-discovered known key %u", i);
+                break;
+            }
+        }
+        if(!found) {
+            FURI_LOG_E(
+                TAG,
+                "TX: no Hitag2 Key in .sub and no known key matches (uid=%08lX)",
+                (unsigned long)serial);
+            return SubGhzProtocolStatusErrorParserOthers;
+        }
     }
 
     control &= 0x03FFU;
@@ -965,4 +1055,28 @@ void subghz_protocol_decoder_fiat_v1_get_string(void* context, FuriString* outpu
         (unsigned long)instance->generic.cnt,
         instance->tail_bits,
         instance->frame_xor);
+}
+
+// [HITAG2_BF] Public API for Hitag2 bruteforce helper
+uint32_t subghz_protocol_fiat_v1_compute_auth(
+    uint32_t uid,
+    uint8_t button,
+    uint16_t control,
+    const uint8_t key[6],
+    uint32_t epoch) {
+    return fiat_v1_bcm_generate_authenticator(uid, button, control, key, epoch);
+}
+
+bool subghz_protocol_fiat_v1_verify_key(
+    uint32_t uid,
+    uint8_t button,
+    uint16_t control,
+    uint32_t hop,
+    const uint8_t key[6],
+    uint32_t epoch) {
+    return fiat_v1_key_matches(uid, button, control, hop, key, epoch);
+}
+
+const uint8_t (*subghz_protocol_fiat_v1_get_known_keys(void))[6] {
+    return fiat_v1_known_keys;
 }

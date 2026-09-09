@@ -4,6 +4,8 @@
 #include "../blocks/encoder.h"
 #include "../blocks/generic.h"
 #include "../blocks/math.h"
+// [PROTOPIRATE_PORT] custom_btn support
+#include "../blocks/custom_btn_i.h"
 
 #include <string.h>
 
@@ -219,6 +221,13 @@ static void chrysler_v0_decode_packet(SubGhzProtocolDecoderChrysler* instance) {
     }
 
     instance->generic.btn = instance->decoded_button;
+
+    // [PROTOPIRATE_PORT] custom_btn support
+    // Chrysler supports 2 buttons: Up=0x1 (Lock), OK=0x2 (Unlock)
+    if(subghz_custom_btn_get_original() == 0) {
+        subghz_custom_btn_set_original(instance->generic.btn);
+    }
+    subghz_custom_btn_set_max(2);
 }
 
 static void chrysler_v0_decoder_commit(SubGhzProtocolDecoderChrysler* instance) {
@@ -476,6 +485,28 @@ SubGhzProtocolStatus
     uint8_t tx_button = original_button;
     if(btn_u32 == 1U || btn_u32 == 2U) {
         tx_button = (uint8_t)btn_u32;
+    }
+
+    // [PROTOPIRATE_PORT] custom_btn support
+    // Chrysler mapping: Up=0x1 (Lock), OK=0x2 (Unlock)
+    // custom_btn_id=OK returns original; UP/DOWN override tx_button.
+    {
+        if(subghz_custom_btn_get_original() == 0) {
+            subghz_custom_btn_set_original(original_button);
+        }
+        subghz_custom_btn_set_max(2);
+        uint8_t custom_btn_id = subghz_custom_btn_get();
+        switch(custom_btn_id) {
+        case SUBGHZ_CUSTOM_BTN_UP:
+            tx_button = 0x1U;
+            break;
+        case SUBGHZ_CUSTOM_BTN_OK:
+        default:
+            // [BUGFIX] OK is the default state after loading a .sub. Replay
+            // the original captured button rather than force a specific one.
+            tx_button = original_button;
+            break;
+        }
     }
 
     instance->tx_button = tx_button;
