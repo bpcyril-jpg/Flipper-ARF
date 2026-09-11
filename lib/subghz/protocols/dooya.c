@@ -428,17 +428,10 @@ void subghz_protocol_decoder_dooya_get_string(void* context, FuriString* output)
         output,
         "%s %dbit\r\n"
         "Key:0x%010llX\r\n"
-        "Sn:0x%08lX\r\n"
-        "Btn:%X - %s\r\n",
+        "SN:0x%lX Btn:[%s]\r\n",
         instance->generic.protocol_name,
         instance->generic.data_count_bit,
         instance->generic.data,
         instance->generic.serial,
-        instance->generic.btn,
         subghz_protocol_dooya_get_name_button(instance->generic.btn));
-    if(instance->generic.cnt == DOYA_SINGLE_CHANNEL) {
-        furi_string_cat_printf(output, "Ch:Single\r\n");
-    } else {
-        furi_string_cat_printf(output, "Ch:%lu\r\n", instance->generic.cnt);
-    }
 }

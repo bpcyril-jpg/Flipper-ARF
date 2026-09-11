@@ -412,15 +412,11 @@ void subghz_protocol_decoder_fiat_v2_get_string(void* context, FuriString* outpu
     furi_string_cat_printf(
         output,
         "%s %ubit\r\n"
-        "UID:%08lX\r\n"
-        "Hop:%08lX Type:%01X\r\n"
-        "Btn:%02X [%s] Cnt:%02lX\r\n",
+        "SN:0x%lX Btn:[%s]\r\n"
+        "Cnt:%02lX\r\n",
         instance->generic.protocol_name,
         FIAT_V2_LOGICAL_BITS,
         (unsigned long)instance->uid,
-        (unsigned long)instance->hop,
-        (unsigned)(instance->raw_data[6] >> 4),
-        instance->button,
         fiat_v2_button_name(instance->button),
         (unsigned long)instance->generic.cnt);
 }

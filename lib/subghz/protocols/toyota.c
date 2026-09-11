@@ -715,7 +715,6 @@ void subghz_protocol_decoder_toyota_get_string(void* context, FuriString* output
     furi_assert(context);
     SubGhzProtocolDecoderToyota* inst = context;
 
-    uint32_t hop    = (uint32_t)(inst->generic.data >> 32);
     uint32_t serial = (uint32_t)((inst->generic.data >> 4) & 0x0FFFFFFF);
     uint8_t  button = (uint8_t)(inst->generic.data & 0x0F);
     uint8_t  var    = (inst->generic.cnt != 0) ? 1 : 0;
@@ -723,13 +722,12 @@ void subghz_protocol_decoder_toyota_get_string(void* context, FuriString* output
     furi_string_cat_printf(
         output,
         "%s %dbit\r\n"
-        "Hop: %08lX\r\n"
-        "Sn:  %07lX\r\n"
-        "Btn: %X [%s]",
+        "Key:0x%lX%08lX\r\n"
+        "SN:0x%lX Btn:[%s]",
         toyota_model_name(var),
         inst->generic.data_count_bit,
-        (unsigned long)hop,
+        (uint32_t)(inst->generic.data >> 32),
+        (uint32_t)inst->generic.data,
         (unsigned long)serial,
-        button,
         toyota_button_name(button, var));
 }

@@ -751,7 +751,7 @@ static void subghz_protocol_somfy_keytis_check_remote_controller(SubGhzBlockGene
     subghz_custom_btn_set_max(1);
 }
 
-/** 
+ /** 
  * Get button name.
  * @param btn Button number, 4 bit
  */
@@ -850,19 +850,15 @@ void subghz_protocol_decoder_somfy_keytis_get_string(void* context, FuriString* 
 
     furi_string_cat_printf(
         output,
-        "%s %db\r\n"
-        "%lX%08lX%06lX\r\n"
-        "Sn:0x%06lX \r\n"
-        "Cnt:%04lX\r\n"
-        "Btn:%X - %s\r\n",
-
+        "%s %dbit\r\n"
+        "Key:0x%lX%08lX\r\n"
+        "SN:0x%lX Btn:[%s]\r\n"
+        "Cnt:%04lX",
         instance->generic.protocol_name,
         instance->generic.data_count_bit,
         (uint32_t)(instance->generic.data >> 32),
         (uint32_t)instance->generic.data,
-        instance->press_duration_counter,
         instance->generic.serial,
-        instance->generic.cnt,
-        instance->generic.btn,
-        subghz_protocol_somfy_keytis_get_name_button(instance->generic.btn));
+        subghz_protocol_somfy_keytis_get_name_button(instance->generic.btn),
+        instance->generic.cnt);
 }

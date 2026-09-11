@@ -1033,27 +1033,39 @@ void subghz_protocol_decoder_fiat_v1_get_string(void* context, FuriString* outpu
     furi_check(context);
     SubGhzProtocolDecoderFiatV1* instance = context;
 
-    furi_string_cat_printf(
-        output,
-        "%s %ubit %s\r\n"
-        "Sn:%08lX\r\n"
-        "UID:%08lX\r\n"
-        "Hop:%08lX\r\n"
-        "Btn:%02X [%s]\r\n"
-        "Ctrl:%03lX Sync:%02X\r\n"
-        "Tail:%u XOR:%02X\r\n",
-        instance->generic.protocol_name,
-        FIAT_V1_LOGICAL_BITS,
-        instance->hitag2_key_valid ? "KEY:OK" : "KEY:??",
-        (unsigned long)instance->generic.serial,
-        (unsigned long)instance->uid,
-        (unsigned long)instance->hop,
-        instance->generic.btn,
-        fiat_v1_button_name(instance->generic.btn),
-        (unsigned long)instance->generic.cnt,
-        instance->family,
-        instance->tail_bits,
-        instance->frame_xor);
+    // Key line: the 6-byte hitag2 key recovered by the Hitag2Hell attack, or
+    // "?" when it has not been recovered yet (capture without a matching key).
+    if(instance->hitag2_key_valid) {
+        furi_string_cat_printf(
+            output,
+            "%s %ubit\r\n"
+            "Key:%02X%02X%02X%02X%02X%02X\r\n"
+            "SN:0x%lX Btn:[%s]\r\n"
+            "Cnt:%03lX\r\n",
+            instance->generic.protocol_name,
+            FIAT_V1_LOGICAL_BITS,
+            instance->hitag2_key[0],
+            instance->hitag2_key[1],
+            instance->hitag2_key[2],
+            instance->hitag2_key[3],
+            instance->hitag2_key[4],
+            instance->hitag2_key[5],
+            (unsigned long)instance->generic.serial,
+            fiat_v1_button_name(instance->generic.btn),
+            (unsigned long)instance->generic.cnt);
+    } else {
+        furi_string_cat_printf(
+            output,
+            "%s %ubit\r\n"
+            "Key:?\r\n"
+            "SN:0x%lX Btn:[%s]\r\n"
+            "Cnt:%03lX\r\n",
+            instance->generic.protocol_name,
+            FIAT_V1_LOGICAL_BITS,
+            (unsigned long)instance->generic.serial,
+            fiat_v1_button_name(instance->generic.btn),
+            (unsigned long)instance->generic.cnt);
+    }
 }
 
 // [HITAG2_BF] Public API for Hitag2 bruteforce helper

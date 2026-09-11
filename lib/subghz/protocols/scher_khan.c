@@ -1043,15 +1043,13 @@ void subghz_protocol_decoder_scher_khan_get_string(void* context, FuriString* ou
         output,
         "%s %dbit\r\n"
         "Key:0x%lX%08lX\r\n"
-        "Sn:%07lX Btn:[%s]\r\n"
-        "Cntr:%04lX\r\n"
-        "Pt: %s\r\n",
+        "SN:0x%lX Btn:[%s]\r\n"
+        "Cnt:%04lX",
         instance->generic.protocol_name,
         instance->generic.data_count_bit,
         (uint32_t)(instance->generic.data >> 32),
         (uint32_t)instance->generic.data,
         instance->generic.serial,
         scher_khan_btn_name(scher_khan_get_btn_code(instance->generic.btn)),
-        instance->generic.cnt,
-        instance->protocol_name);
+        instance->generic.cnt);
 }
