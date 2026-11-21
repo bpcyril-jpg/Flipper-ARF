@@ -1,8 +1,32 @@
 #include "../subghz_i.h"
 #include "subghz_scene_start.h"
-#include <dolphin/dolphin.h>
+#include <loader/loader.h>
+#include <storage/storage.h>
 
 #include <lib/subghz/protocols/raw.h>
+
+#define SUBGHZ_GARAGE_FAP_PATH EXT_PATH("apps/Sub-GHz/subghz_garage.fap")
+#define SUBGHZ_FRECUANCY_FAP_PATH EXT_PATH("apps/Sub-GHz/freq_analyzer.fap")
+
+static void subghz_scene_start_launch_garage(SubGhz* subghz) {
+    Loader* loader = furi_record_open(RECORD_LOADER);
+    loader_enqueue_launch(
+        loader, SUBGHZ_GARAGE_FAP_PATH, NULL, LoaderDeferredLaunchFlagGui);
+    furi_record_close(RECORD_LOADER);
+
+    scene_manager_stop(subghz->scene_manager);
+    view_dispatcher_stop(subghz->view_dispatcher);
+}
+
+static void subghz_scene_start_launch_frequency_analyzer(SubGhz* subghz) {
+    Loader* loader = furi_record_open(RECORD_LOADER);
+    loader_enqueue_launch(
+        loader, SUBGHZ_FRECUANCY_FAP_PATH, NULL, LoaderDeferredLaunchFlagGui);
+    furi_record_close(RECORD_LOADER);
+
+    scene_manager_stop(subghz->scene_manager);
+    view_dispatcher_stop(subghz->view_dispatcher);
+}
 
 void subghz_scene_start_submenu_callback(void* context, uint32_t index) {
     SubGhz* subghz = context;
@@ -17,6 +41,12 @@ void subghz_scene_start_on_enter(void* context) {
 
     submenu_add_item(
         subghz->submenu, "Read", SubmenuIndexRead, subghz_scene_start_submenu_callback, subghz);
+    submenu_add_item(
+        subghz->submenu,
+        "Garage / Gate",
+        SubmenuIndexGarage,
+        subghz_scene_start_submenu_callback,
+        subghz);
     submenu_add_item(
         subghz->submenu,
         "Read RAW",
@@ -87,6 +117,11 @@ bool subghz_scene_start_on_event(void* context, SceneManagerEvent event) {
                 subghz->scene_manager, SubGhzSceneStart, SubmenuIndexRead);
             scene_manager_next_scene(subghz->scene_manager, SubGhzSceneReceiver);
             return true;
+        } else if(event.event == SubmenuIndexGarage) {
+            scene_manager_set_scene_state(
+                subghz->scene_manager, SubGhzSceneStart, SubmenuIndexGarage);
+            subghz_scene_start_launch_garage(subghz);
+            return true;
         } else if(event.event == SubmenuIndexSaved) {
             scene_manager_set_scene_state(
                 subghz->scene_manager, SubGhzSceneStart, SubmenuIndexSaved);
@@ -100,8 +135,7 @@ bool subghz_scene_start_on_event(void* context, SceneManagerEvent event) {
         } else if(event.event == SubmenuIndexFrequencyAnalyzer) {
             scene_manager_set_scene_state(
                 subghz->scene_manager, SubGhzSceneStart, SubmenuIndexFrequencyAnalyzer);
-            scene_manager_next_scene(subghz->scene_manager, SubGhzSceneFrequencyAnalyzer);
-            dolphin_deed(DolphinDeedSubGhzFrequencyAnalyzer);
+            subghz_scene_start_launch_frequency_analyzer(subghz);
             return true;
         } else if(event.event == SubmenuIndexProtocolList) {
             scene_manager_set_scene_state(
